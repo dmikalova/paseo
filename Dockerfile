@@ -35,8 +35,20 @@ RUN set -eux; \
 
 ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:${PATH}
 
+# The root filesystem is read-only on den. Renovate updates the CLIs, so the
+# CLIs must not try to update themselves.
+ENV DISABLE_AUTOUPDATER=1
+
+# Download caches go under ~/.cache. den mounts a cache area there, so the
+# caches stay out of the backup of the home directory.
+ENV GOMODCACHE=/home/paseo/.cache/go-mod \
+    npm_config_cache=/home/paseo/.cache/npm \
+    npm_config_store_dir=/home/paseo/.cache/pnpm-store
+
 # Managed settings: agents and project files cannot override these keys.
+# gitconfig: git uses the gh token for github.com.
 COPY etc/ /etc/
 
-# The upstream entrypoint runs as root, prepares the volumes, and then drops
-# the daemon and the agents to the paseo user.
+# The upstream entrypoint prepares the volumes. If it starts as root, it drops
+# the daemon and the agents to the paseo user. On den it starts as the paseo
+# user, because the quadlet maps the login user to UID 1000.

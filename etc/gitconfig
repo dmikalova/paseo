@@ -1,0 +1,4 @@
+# git uses the gh CLI for github.com credentials. gh reads GH_TOKEN.
+[credential "https://github.com"]
+	helper =
+	helper = !gh auth git-credential
