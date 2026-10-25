@@ -49,6 +49,7 @@ ENV GOMODCACHE=/home/paseo/.cache/go-mod \
 # gitconfig: git uses the gh token for github.com.
 COPY etc/ /etc/
 
-# The upstream entrypoint prepares the volumes. If it starts as root, it drops
-# the daemon and the agents to the paseo user. On den it starts as the paseo
-# user, because the quadlet maps the login user to UID 1000.
+# Start as the paseo user, not root. The upstream entrypoint then skips its
+# chown and its drop to paseo. Under rootless podman, root in the container
+# has no capabilities, so that chown fails on a bind mount.
+USER paseo
