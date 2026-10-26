@@ -78,14 +78,8 @@ for (const id of builtin) {
   if (keep.size === 0 || keep.has(id)) continue;
   providers[id] = { ...providers[id], enabled: false };
 }
-if (keep.has("gemini")) {
-  providers.gemini = {
-    ...providers.gemini,
-    extends: "acp",
-    label: "Gemini",
-    command: ["gemini", "--acp"],
-  };
-}
+// Gemini CLI no longer serves Google AI Pro plans. Antigravity replaces it.
+delete providers.gemini;
 
 // A local model server with the Anthropic Messages API, such as Ollama on
 // den. Claude Code runs against it as the "local" provider.
@@ -120,7 +114,7 @@ if (process.env.PASEO_SETUP_LOCAL_URL && localModels.length > 0) {
 const P = "{{{prompt}}}";
 const profiles = {
   claude: { name: "Claude Code", command: "claude", args: [P] },
-  gemini: { name: "Gemini CLI", command: "gemini", args: [`--prompt-interactive=${P}`] },
+  antigravity: { name: "Antigravity", command: "agy", args: [`--prompt-interactive=${P}`] },
   codex: { name: "Codex", command: "codex", args: [P] },
   opencode: { name: "OpenCode", command: "opencode", args: [`--prompt=${P}`] },
   pi: { name: "Pi", command: "pi", args: [P] },
@@ -134,29 +128,18 @@ fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
 JS
   log "providers set to: ${PASEO_SETUP_PROVIDERS}"
 
-  [[ ",${PASEO_SETUP_PROVIDERS// /}," == *",gemini,"* ]] && setup_gemini_auth
+  [[ ",${PASEO_SETUP_PROVIDERS// /}," == *",antigravity,"* ]] && install_antigravity
   return 0
 }
 
-# Gemini CLI asks for an API key in ACP mode until an auth type is set. Use
-# the Google login: run `gemini` once in the container to log in. See the
-# README. An auth type that is set already is kept.
-setup_gemini_auth() {
-  mkdir -p "${HOME}/.gemini"
-  node - "${HOME}/.gemini/settings.json" <<'JS'
-const fs = require("fs");
-const file = process.argv[2];
-let s = {};
-try {
-  s = JSON.parse(fs.readFileSync(file, "utf8"));
-} catch (err) {
-  if (err.code !== "ENOENT") throw err;
-}
-s.security ??= {};
-s.security.auth ??= {};
-s.security.auth.selectedType ??= "oauth-personal";
-fs.writeFileSync(file, JSON.stringify(s, null, 2) + "\n");
-JS
+# The Antigravity CLI updates itself, so it goes in the home and not in the
+# read-only image. The install is skipped when agy is already there. The login
+# cannot be automated. See the README.
+install_antigravity() {
+  [[ -x "${HOME}/.local/bin/agy" ]] && return 0
+  curl -fsSL https://antigravity.google/cli/install.sh | bash >/dev/null 2>&1 \
+    && log "antigravity cli installed" \
+    || log "antigravity cli install failed"
 }
 
 # Bring a clean clone up to date. A clone with changes, or on a branch with no

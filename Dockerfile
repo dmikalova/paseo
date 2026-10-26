@@ -7,8 +7,6 @@ FROM ghcr.io/getpaseo/paseo:${PASEO_VERSION}
 ARG TARGETARCH
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 ARG CLAUDE_CODE_VERSION=2.1.310
-# renovate: datasource=npm depName=@google/gemini-cli
-ARG GEMINI_CLI_VERSION=0.65.0
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.103.2
 # renovate: datasource=golang-version depName=go
@@ -24,8 +22,7 @@ USER root
 
 RUN set -eux; \
     npm install -g \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
-      "@google/gemini-cli@${GEMINI_CLI_VERSION}"; \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"; \
     npm cache clean --force
 
 # One go install for each module: go refuses packages from different modules
@@ -57,10 +54,12 @@ RUN set -eux; \
     setcap cap_setuid=ep /usr/bin/newuidmap; \
     setcap cap_setgid=ep /usr/bin/newgidmap
 
-ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:${PATH}
+# paseo-setup installs the Antigravity CLI in ~/.local/bin.
+ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:/home/paseo/.local/bin:${PATH}
 
-# The root filesystem is read-only on den. Renovate updates the CLIs, so the
-# CLIs must not try to update themselves.
+# The root filesystem is read-only on den. Renovate updates the CLIs in the
+# image, so these CLIs must not try to update themselves. The Antigravity CLI
+# is in the home, and it updates itself.
 ENV DISABLE_AUTOUPDATER=1
 
 # Podman needs a runtime directory. paseo-setup makes it on the /tmp tmpfs.

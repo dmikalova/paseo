@@ -6,7 +6,7 @@ The [Paseo](https://paseo.sh) image that den runs, and later the workflow plugin
 
 The image starts from `ghcr.io/getpaseo/paseo` and adds these tools:
 
-- Claude Code and Gemini CLI, the agent CLIs.
+- Claude Code, the agent CLI. `paseo-setup` installs the Antigravity CLI (`agy`) in the home at start-up, because it updates itself.
 - `gh`, Go, `mage`, `lefthook` and `project-standards`, for the standard project check.
 
 - Rootless podman with the `docker` command, so that agents can build and run containers. See [Containers](#containers).
@@ -22,22 +22,22 @@ All versions are pinned in the `Dockerfile`. Renovate reads the `# renovate:` co
 | Variable | Meaning |
 | --- | --- |
 | `PASEO_SETUP_OWNERS` | GitHub owners, comma-separated, such as `dmikalova,goodship-io`. Once the daemon is healthy, the script runs `paseo clone <owner/repo> --protocol https --dir /workspace` for each repo of each owner that is not in `/workspace` yet. A repo that is already in `/workspace` but not listed by `paseo project ls` is registered with `paseo project create`. A clone that is already there and has no changes is updated with `git pull --ff-only`. Archived repos and forks are skipped. |
-| `PASEO_SETUP_PROVIDERS` | Agent providers to keep, comma-separated, such as `claude,gemini`. The script disables every other built-in provider (`claude`, `codex`, `copilot`, `opencode`, `pi`, `omp`, `antigravity`, `muse`) in `~/.paseo/config.json` and keeps the other keys. `gemini` is added as an ACP provider that runs `gemini --acp`, and its auth type is set to the Google login (see [Gemini login](#gemini-login)). The terminal profiles in the UI are set to the same CLIs, in the same order. |
+| `PASEO_SETUP_PROVIDERS` | Agent providers to keep, comma-separated, such as `claude,antigravity`. The script disables every other built-in provider (`claude`, `codex`, `copilot`, `opencode`, `pi`, `omp`, `antigravity`, `muse`) in `~/.paseo/config.json` and keeps the other keys. If `antigravity` is kept, the script installs `agy` in `~/.local/bin` when it is not there (see [Antigravity login](#antigravity-login)). The terminal profiles in the UI are set to the same CLIs, in the same order. |
 | `PASEO_SETUP_LOCAL_URL` | The URL of a local model server with the Anthropic Messages API, such as `http://127.0.0.1:11434` for Ollama. With `PASEO_SETUP_LOCAL_MODELS`, the script adds the `local` provider: Claude Code against that server. `WebSearch` and `WebFetch` are off for it. |
 | `PASEO_SETUP_LOCAL_MODELS` | The local model names, comma-separated. The first one is the default and is used for every Claude model tier. |
 | `PASEO_SETUP_LOCAL_CONTEXT` | The context window of the local models, in tokens. The default is `32768`. Claude Code compacts the conversation at this size. Set the same size on the model server. |
 | `PASEO_SETUP_SIGNING_KEY` | Base64 of an OpenSSH private key that has a passphrase. The script decodes it into `/tmp` with mode `0600`, removes the passphrase from that copy, and sets `gpg.format=ssh`, `user.signingkey`, `commit.gpgsign` and `tag.gpgsign` in the global git config. The key is never written to `/home` or `/workspace`. It also writes an allowed signers file next to the key, with the committer email, so `git log --show-signature` works. If the key or the passphrase is wrong, the script logs the error and leaves signing off, so the container still starts. |
 | `PASEO_SETUP_SIGNING_KEY_PASSPHRASE` | The passphrase of that key. |
 
-### Gemini login
+### Antigravity login
 
-Gemini CLI uses the Google login, so a Google AI Pro plan applies. The login cannot be automated. Run `gemini` once in each instance, choose **Sign in with Google**, open the URL, and paste the code back:
+Google AI Pro and Ultra plans work only in the Antigravity CLI. Gemini CLI stopped serving these plans on 2026-06-18, so the image does not have it. The login cannot be automated. Run `agy` once in each instance, choose **Google OAuth**, open the URL, and paste the code back:
 
 ```sh
-ssh -t den podman exec -it -e NO_BROWSER=true paseo gemini
+ssh -t den podman exec -it paseo /home/paseo/.local/bin/agy
 ```
 
-Use `paseo-work` for the work instance. Gemini keeps the login in `~/.gemini`, in the home that is backed up, so it lasts across restarts and image updates. Type `/quit` after the login.
+Use `paseo-work` for the work instance. `agy` keeps the login in `~/.gemini/oauth_creds.json`, in the home that is backed up, so it lasts across restarts and image updates. Press Ctrl+C twice after the login.
 
 ### Folder trust
 
