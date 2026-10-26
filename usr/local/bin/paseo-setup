@@ -11,7 +11,8 @@ log() { echo "[paseo-setup] $*" >&2; }
 
 # Podman needs its runtime directory. /tmp is a tmpfs, so make it each start.
 if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
-  mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 0700 "$XDG_RUNTIME_DIR"
 fi
 
 # A bad key or passphrase must not stop the container, or it restarts in a
@@ -23,7 +24,7 @@ setup_signing() {
 
 prepare_signing_key() {
   # /tmp is tmpfs. The key never goes to /home or /workspace.
-  local dir key
+  local dir key pub
   dir="$(mktemp -d /tmp/paseo-signing.XXXXXX)"
   chmod 0700 "$dir"
   key="${dir}/id"
@@ -31,6 +32,13 @@ prepare_signing_key() {
     ! ssh-keygen -q -p -P "${PASEO_SETUP_SIGNING_KEY_PASSPHRASE:-}" -N "" -f "$key" >/dev/null; then
     rm -rf "$dir"
     return 1
+  fi
+
+  # The allowed signers file lets git log --show-signature check the commits.
+  local email="${GIT_COMMITTER_EMAIL:-${GIT_AUTHOR_EMAIL:-}}"
+  if [[ -n "$email" ]] && pub="$(ssh-keygen -y -f "$key")"; then
+    printf '%s %s\n' "$email" "$pub" >"${dir}/allowed_signers"
+    git config --global gpg.ssh.allowedSignersFile "${dir}/allowed_signers"
   fi
 
   git config --global gpg.format ssh
@@ -41,7 +49,7 @@ prepare_signing_key() {
 }
 
 setup_providers() {
-  [[ -n "${PASEO_SETUP_PROVIDERS:-}" ]] || return 0
+  [[ -n "${PASEO_SETUP_PROVIDERS:-}" || -n "${PASEO_SETUP_LOCAL_URL:-}" ]] || return 0
 
   mkdir -p "$PASEO_HOME"
   node - "$PASEO_HOME/config.json" <<'JS'
@@ -67,7 +75,7 @@ config.agents.providers ??= {};
 const providers = config.agents.providers;
 
 for (const id of builtin) {
-  if (keep.has(id)) continue;
+  if (keep.size === 0 || keep.has(id)) continue;
   providers[id] = { ...providers[id], enabled: false };
 }
 if (keep.has("gemini")) {
@@ -79,9 +87,84 @@ if (keep.has("gemini")) {
   };
 }
 
+// A local model server with the Anthropic Messages API, such as Ollama on
+// den. Claude Code runs against it as the "local" provider.
+const localModels = (process.env.PASEO_SETUP_LOCAL_MODELS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+if (process.env.PASEO_SETUP_LOCAL_URL && localModels.length > 0) {
+  const first = localModels[0];
+  providers.local = {
+    extends: "claude",
+    label: "Local",
+    env: {
+      ANTHROPIC_BASE_URL: process.env.PASEO_SETUP_LOCAL_URL,
+      ANTHROPIC_AUTH_TOKEN: "local",
+      CLAUDE_CODE_OAUTH_TOKEN: "",
+      ANTHROPIC_DEFAULT_OPUS_MODEL: first,
+      ANTHROPIC_DEFAULT_SONNET_MODEL: first,
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: first,
+    },
+    // A local server has no server-side tools.
+    disallowedTools: ["WebSearch", "WebFetch"],
+    models: localModels.map((id, i) => ({ id, label: id, ...(i === 0 ? { isDefault: true } : {}) })),
+  };
+} else {
+  delete providers.local;
+}
+
+// The terminal profiles in the UI: one for each kept CLI, in the order of
+// PASEO_SETUP_PROVIDERS. The prompt forms are from each CLI's --help.
+const P = "{{{prompt}}}";
+const profiles = {
+  claude: { name: "Claude Code", command: "claude", args: [P] },
+  gemini: { name: "Gemini CLI", command: "gemini", args: [`--prompt-interactive=${P}`] },
+  codex: { name: "Codex", command: "codex", args: [P] },
+  opencode: { name: "OpenCode", command: "opencode", args: [`--prompt=${P}`] },
+  pi: { name: "Pi", command: "pi", args: [P] },
+};
+config.daemon ??= {};
+if (keep.size > 0) config.daemon.terminalProfiles = [...keep]
+  .filter((id) => profiles[id])
+  .map((id) => ({ id, ...profiles[id], icon: id }));
+
 fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
 JS
   log "providers set to: ${PASEO_SETUP_PROVIDERS}"
+
+  [[ ",${PASEO_SETUP_PROVIDERS// /}," == *",gemini,"* ]] && setup_gemini_auth
+  return 0
+}
+
+# Gemini CLI asks for an API key in ACP mode until an auth type is set. Use
+# the Google login: run `gemini` once in the container to log in. See the
+# README. An auth type that is set already is kept.
+setup_gemini_auth() {
+  mkdir -p "${HOME}/.gemini"
+  node - "${HOME}/.gemini/settings.json" <<'JS'
+const fs = require("fs");
+const file = process.argv[2];
+let s = {};
+try {
+  s = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
+}
+s.security ??= {};
+s.security.auth ??= {};
+s.security.auth.selectedType ??= "oauth-personal";
+fs.writeFileSync(file, JSON.stringify(s, null, 2) + "\n");
+JS
+}
+
+# Bring a clean clone up to date. A clone with changes, or on a branch with no
+# upstream, is left alone.
+update_clone() {
+  local dir="$1"
+  [[ -z "$(git -C "$dir" status --porcelain)" ]] || return 0
+  git -C "$dir" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || return 0
+  git -C "$dir" pull --ff-only --quiet || log "pull of ${dir} failed"
 }
 
 # Paths of the projects that the daemon already knows.
@@ -107,6 +190,7 @@ clone_repos() {
       [[ -n "$repo" ]] || continue
       name="${repo#*/}"
       if [[ -d "/workspace/${name}" ]]; then
+        update_clone "/workspace/${name}"
         # Cloned earlier: make sure the daemon lists it as a project.
         projects="$(registered_projects)" || { log "paseo project ls failed"; continue; }
         grep -qxF "/workspace/${name}" <<<"$projects" ||
