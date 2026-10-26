@@ -74,9 +74,10 @@ config.agents ??= {};
 config.agents.providers ??= {};
 const providers = config.agents.providers;
 
+// A kept provider is enabled again, in case an older list disabled it.
 for (const id of builtin) {
-  if (keep.size === 0 || keep.has(id)) continue;
-  providers[id] = { ...providers[id], enabled: false };
+  if (keep.size === 0) break;
+  providers[id] = { ...providers[id], enabled: keep.has(id) };
 }
 // Gemini CLI no longer serves Google AI Pro plans. Antigravity replaces it.
 delete providers.gemini;
