@@ -9,17 +9,24 @@ set -euo pipefail
 
 log() { echo "[paseo-setup] $*" >&2; }
 
+# A bad key or passphrase must not stop the container, or it restarts in a
+# loop. Signing stays off and the ruleset rejects the unsigned commits.
 setup_signing() {
   [[ -n "${PASEO_SETUP_SIGNING_KEY:-}" ]] || return 0
+  prepare_signing_key || log "signing key setup failed, commits stay unsigned"
+}
 
+prepare_signing_key() {
   # /tmp is tmpfs. The key never goes to /home or /workspace.
   local dir key
   dir="$(mktemp -d /tmp/paseo-signing.XXXXXX)"
   chmod 0700 "$dir"
   key="${dir}/id"
-  (umask 077 && printf '%s' "$PASEO_SETUP_SIGNING_KEY" | base64 -d >"$key")
-  chmod 0600 "$key"
-  ssh-keygen -q -p -P "${PASEO_SETUP_SIGNING_KEY_PASSPHRASE:-}" -N "" -f "$key" >/dev/null
+  if ! (umask 077 && printf '%s' "$PASEO_SETUP_SIGNING_KEY" | base64 -d >"$key") ||
+    ! ssh-keygen -q -p -P "${PASEO_SETUP_SIGNING_KEY_PASSPHRASE:-}" -N "" -f "$key" >/dev/null; then
+    rm -rf "$dir"
+    return 1
+  fi
 
   git config --global gpg.format ssh
   git config --global user.signingkey "$key"
@@ -72,13 +79,21 @@ JS
   log "providers set to: ${PASEO_SETUP_PROVIDERS}"
 }
 
+# Paths of the projects that the daemon already knows.
+registered_projects() {
+  paseo project ls --json | node -e '
+    const rows = JSON.parse(require("fs").readFileSync(0, "utf8"));
+    for (const r of Array.isArray(rows) ? rows : rows.data ?? []) console.log(r.path);
+  '
+}
+
 clone_repos() {
   local port="${PASEO_LISTEN##*:}" owner repo name
   until curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; do
     sleep 2
   done
 
-  local owners
+  local owners projects
   IFS=',' read -ra owners <<<"$PASEO_SETUP_OWNERS"
   for owner in "${owners[@]}"; do
     owner="${owner// /}"
@@ -86,9 +101,17 @@ clone_repos() {
     while read -r repo; do
       [[ -n "$repo" ]] || continue
       name="${repo#*/}"
-      [[ -d "/workspace/${name}" ]] && continue
-      paseo clone "$repo" --protocol https --dir /workspace ||
-        log "clone of ${repo} failed"
+      if [[ -d "/workspace/${name}" ]]; then
+        # Cloned earlier: make sure the daemon lists it as a project.
+        projects="$(registered_projects)" || { log "paseo project ls failed"; continue; }
+        grep -qxF "/workspace/${name}" <<<"$projects" ||
+          paseo project create "/workspace/${name}" ||
+          log "project create for ${repo} failed"
+      else
+        paseo clone "$repo" --protocol https --dir /workspace ||
+          { log "clone of ${repo} failed"; continue; }
+      fi
+      paseo-trust "/workspace/${name}" || log "trust for ${repo} failed"
     done < <(gh repo list "$owner" --limit 1000 --no-archived --source \
       --json nameWithOwner --jq '.[].nameWithOwner' ||
       { log "listing ${owner} failed" >&2; })
@@ -99,8 +122,10 @@ clone_repos() {
 setup_signing
 setup_providers
 
+# The subshell lets the background job outlive it, so tini adopts and reaps
+# the job and the daemon does not collect a zombie.
 if [[ -n "${PASEO_SETUP_OWNERS:-}" ]]; then
-  clone_repos &
+  ( clone_repos & )
 fi
 
 exec /usr/local/bin/paseo-docker-entrypoint "$@"
