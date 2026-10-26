@@ -15,6 +15,10 @@ ARG GH_VERSION=2.103.2
 ARG GO_VERSION=1.27.3
 # renovate: datasource=github-releases depName=magefile/mage
 ARG MAGE_VERSION=1.17.2
+# renovate: datasource=github-releases depName=evilmartians/lefthook
+ARG LEFTHOOK_VERSION=2.2.2
+# renovate: datasource=github-releases depName=dmikalova/project-standards
+ARG PROJECT_STANDARDS_VERSION=1.36.0
 
 USER root
 
@@ -30,7 +34,10 @@ RUN set -eux; \
     curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local --strip-components=1 "gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh"; \
     GOBIN=/usr/local/bin GOPATH=/tmp/go GOCACHE=/tmp/gocache \
-      /usr/local/go/bin/go install "github.com/magefile/mage@v${MAGE_VERSION}"; \
+      /usr/local/go/bin/go install \
+        "github.com/magefile/mage@v${MAGE_VERSION}" \
+        "github.com/evilmartians/lefthook/v2@v${LEFTHOOK_VERSION}" \
+        "github.com/dmikalova/project-standards/cmd/project-standards@v${PROJECT_STANDARDS_VERSION}"; \
     rm -rf /tmp/go /tmp/gocache
 
 ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:${PATH}
@@ -48,8 +55,13 @@ ENV GOMODCACHE=/home/paseo/.cache/go-mod \
 # Managed settings: agents and project files cannot override these keys.
 # gitconfig: git uses the gh token for github.com.
 COPY etc/ /etc/
+# paseo-setup is the start-up setup script, see the README.
+COPY --chmod=0755 usr/local/bin/paseo-setup /usr/local/bin/paseo-setup
 
 # Start as the paseo user, not root. The upstream entrypoint then skips its
 # chown and its drop to paseo. Under rootless podman, root in the container
 # has no capabilities, so that chown fails on a bind mount.
 USER paseo
+
+# The setup script runs first and then execs the upstream entrypoint.
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/paseo-setup"]
