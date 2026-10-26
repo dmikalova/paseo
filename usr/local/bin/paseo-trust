@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Mark folders as trusted in Claude Code, so that it skips the trust dialog.
+# Claude keeps trust per path. It does not pass from a parent to its subfolders.
+# Usage: paseo-trust <dir>...
+set -euo pipefail
+
+: "${CLAUDE_CONFIG_DIR:=${HOME:-/home/paseo}/.claude}"
+
+mkdir -p "$CLAUDE_CONFIG_DIR"
+exec node - "$CLAUDE_CONFIG_DIR/.claude.json" "$@" <<'JS'
+const fs = require("fs");
+const [file, ...dirs] = process.argv.slice(2);
+
+let config = {};
+try {
+  config = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
+}
+
+config.projects ??= {};
+for (const dir of dirs) {
+  config.projects[dir] = { ...config.projects[dir], hasTrustDialogAccepted: true };
+}
+
+// Write to a temp file and rename, so that Claude never reads half a file.
+const tmp = `${file}.${process.pid}.tmp`;
+fs.writeFileSync(tmp, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+fs.renameSync(tmp, file);
+JS

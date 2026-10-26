@@ -55,8 +55,9 @@ ENV GOMODCACHE=/home/paseo/.cache/go-mod \
 # Managed settings: agents and project files cannot override these keys.
 # gitconfig: git uses the gh token for github.com.
 COPY etc/ /etc/
-# paseo-setup is the start-up setup script, see the README.
-COPY --chmod=0755 usr/local/bin/paseo-setup /usr/local/bin/paseo-setup
+# paseo-setup is the start-up setup script and paseo-trust marks folders as
+# trusted in Claude Code, see the README.
+COPY --chmod=0755 usr/local/bin/ /usr/local/bin/
 
 # Start as the paseo user, not root. The upstream entrypoint then skips its
 # chown and its drop to paseo. Under rootless podman, root in the container

@@ -1,0 +1,5 @@
+{
+  "worktree": {
+    "setup": "paseo-trust \"$PASEO_WORKTREE_PATH\""
+  }
+}
