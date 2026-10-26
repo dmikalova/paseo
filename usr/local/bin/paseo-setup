@@ -105,6 +105,7 @@ if (process.env.PASEO_SETUP_LOCAL_URL && localModels.length > 0) {
       ANTHROPIC_DEFAULT_OPUS_MODEL: first,
       ANTHROPIC_DEFAULT_SONNET_MODEL: first,
       ANTHROPIC_DEFAULT_HAIKU_MODEL: first,
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: process.env.PASEO_SETUP_LOCAL_CONTEXT || "32768",
     },
     // A local server has no server-side tools.
     disallowedTools: ["WebSearch", "WebFetch"],
