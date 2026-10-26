@@ -9,7 +9,7 @@ The image starts from `ghcr.io/getpaseo/paseo` and adds these tools:
 - Claude Code and Gemini CLI, the agent CLIs.
 - `gh`, Go, `mage`, `lefthook` and `project-standards`, for the standard project check.
 
-The image also has `/etc/claude-code/managed-settings.json`. This file turns off the Claude attribution in commits and pull requests. An agent or a project cannot override a managed setting.
+The image also has `/etc/claude-code/managed-settings.json`. This file turns off the Claude attribution in commits and pull requests. It also stops agents from running Python in the shell, because the image has no Python. An agent or a project cannot override a managed setting.
 
 All versions are pinned in the `Dockerfile`. Renovate reads the `# renovate:` comments and updates the versions.
 

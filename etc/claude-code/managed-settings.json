@@ -2,5 +2,8 @@
   "attribution": {
     "commit": "",
     "pr": ""
+  },
+  "permissions": {
+    "deny": ["Bash(python:*)", "Bash(python3:*)"]
   }
 }
