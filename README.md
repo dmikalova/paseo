@@ -40,7 +40,7 @@ Agents run `docker` or `podman` in the container. This is rootless podman in a r
 - `newuidmap` and `newgidmap` have file capabilities in place of the setuid bit. In the den container, the setuid helpers cannot write the ID map of the inner user namespace.
 - `/etc/subuid` and `/etc/subgid` give `paseo` every other ID of the outer namespace.
 - `/etc/containers/containers.conf` has the settings of `quay.io/podman/stable`. The inner containers share the network, IPC and UTS namespaces of the outer container.
-- Storage is overlay through `fuse-overlayfs`. Short image names resolve on Docker Hub.
+- Storage is overlay through `fuse-overlayfs`, in `~/.cache/containers/storage`. den mounts `~/.cache` from its cache area, so the images stay out of the home backup. Short image names resolve on Docker Hub.
 - The entrypoint clears the ambient capabilities with `setpriv`, so Paseo and the agents have no effective capabilities.
 
 den must run the container with these settings. den has them in `paseo.container.d/`:
@@ -50,7 +50,6 @@ den must run the container with these settings. den has them in `paseo.container
 - `NoNewPrivileges=false`. With it on, `newuidmap` does not get its file capabilities.
 - `--security-opt unmask=/proc/*`. Debian 12 has podman 4.3, which cannot mount `/proc` for an inner container while paths in the outer `/proc` are masked.
 - `--security-opt label=disable`.
-- A volume on `/home/paseo/.local/share/containers`, so the image storage stays out of the home backup.
 
 ## Release
 
