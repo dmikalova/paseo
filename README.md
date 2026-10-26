@@ -28,6 +28,7 @@ All versions are pinned in the `Dockerfile`. Renovate reads the `# renovate:` co
 | `PASEO_SETUP_LOCAL_CONTEXT` | The context window of the local models, in tokens. The default is `32768`. Claude Code compacts the conversation at this size. Set the same size on the model server. |
 | `PASEO_SETUP_SIGNING_KEY` | Base64 of an OpenSSH private key that has a passphrase. The script decodes it into `/tmp` with mode `0600`, removes the passphrase from that copy, and sets `gpg.format=ssh`, `user.signingkey`, `commit.gpgsign` and `tag.gpgsign` in the global git config. The key is never written to `/home` or `/workspace`. It also writes an allowed signers file next to the key, with the committer email, so `git log --show-signature` works. If the key or the passphrase is wrong, the script logs the error and leaves signing off, so the container still starts. |
 | `PASEO_SETUP_SIGNING_KEY_PASSPHRASE` | The passphrase of that key. |
+| `NOTION_TOKEN` | A Notion internal integration token. The script writes it to `/tmp/paseo-secrets/notion-token` with mode `0600`, adds the `notion` MCP server to Claude Code (user scope) and to `agy`, and then removes the variable from the environment. The server command is `notion-mcp`, a wrapper that reads the token file and starts `notion-mcp-server`, so no config file holds the token. If the variable is empty, the script removes the server. Share each Notion page that agents need with the integration. |
 
 ### Antigravity login
 

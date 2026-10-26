@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Start the Notion MCP server with the token that paseo-setup wrote to tmpfs.
+# The agent config holds only this command, so the token is not in the home.
+set -euo pipefail
+
+token_file="/tmp/paseo-secrets/notion-token"
+[[ -r "$token_file" ]] || {
+  echo "notion-mcp: no token, set NOTION_TOKEN for the container" >&2
+  exit 1
+}
+NOTION_TOKEN="$(<"$token_file")"
+export NOTION_TOKEN
+exec notion-mcp-server "$@"

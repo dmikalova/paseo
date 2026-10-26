@@ -155,6 +155,27 @@ install_antigravity() {
     || log "antigravity cli install failed"
 }
 
+# The Notion MCP server for Claude Code and agy. The token goes to tmpfs and
+# the notion-mcp wrapper reads it. An empty NOTION_TOKEN removes the server.
+setup_notion_mcp() {
+  local dir=/tmp/paseo-secrets
+  claude mcp remove -s user notion >/dev/null 2>&1 || true
+  if [[ -z "${NOTION_TOKEN:-}" ]]; then
+    rm -f "${dir}/notion-token"
+    [[ -x "${HOME}/.local/bin/agy" ]] && { agy mcp remove notion >/dev/null 2>&1 || true; }
+    return 0
+  fi
+  mkdir -p "$dir"
+  chmod 0700 "$dir"
+  (umask 077 && printf '%s' "$NOTION_TOKEN" >"${dir}/notion-token")
+  claude mcp add-json -s user notion '{"type":"stdio","command":"notion-mcp"}' >/dev/null ||
+    log "notion mcp setup for claude failed"
+  if [[ -x "${HOME}/.local/bin/agy" ]]; then
+    agy mcp add notion notion-mcp >/dev/null || log "notion mcp setup for agy failed"
+  fi
+  log "notion mcp configured"
+}
+
 # Bring a clean clone up to date. A clone with changes, or on a branch with no
 # upstream, is left alone.
 update_clone() {
@@ -207,6 +228,9 @@ clone_repos() {
 
 setup_signing
 setup_providers
+setup_notion_mcp || log "notion mcp setup failed"
+# Agents get the token only through the notion-mcp wrapper.
+unset NOTION_TOKEN
 
 # The subshell lets the background job outlive it, so tini adopts and reaps
 # the job and the daemon does not collect a zombie.

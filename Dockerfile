@@ -7,6 +7,8 @@ FROM ghcr.io/getpaseo/paseo:${PASEO_VERSION}
 ARG TARGETARCH
 # renovate: datasource=npm depName=@anthropic-ai/claude-code
 ARG CLAUDE_CODE_VERSION=2.1.310
+# renovate: datasource=npm depName=@notionhq/notion-mcp-server
+ARG NOTION_MCP_VERSION=2.5.2
 # renovate: datasource=github-releases depName=cli/cli
 ARG GH_VERSION=2.103.2
 # renovate: datasource=golang-version depName=go
@@ -22,7 +24,8 @@ USER root
 
 RUN set -eux; \
     npm install -g \
-      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"; \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+      "@notionhq/notion-mcp-server@${NOTION_MCP_VERSION}"; \
     npm cache clean --force
 
 # One go install for each module: go refuses packages from different modules
@@ -80,8 +83,9 @@ ENV GOMODCACHE=/home/paseo/.cache/go-mod \
 # gitconfig: git uses the gh token for github.com.
 # containers, subuid and subgid: the nested podman setup.
 COPY etc/ /etc/
-# paseo-setup is the start-up setup script and paseo-trust marks folders as
-# trusted in Claude Code, see the README.
+# paseo-setup is the start-up setup script, paseo-trust marks folders as
+# trusted in Claude Code, and notion-mcp starts the Notion MCP server. See the
+# README.
 COPY --chmod=0755 usr/local/bin/ /usr/local/bin/
 
 # Start as the paseo user, not root. The upstream entrypoint then skips its
