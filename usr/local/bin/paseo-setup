@@ -226,8 +226,39 @@ clone_repos() {
   log "repo sync finished"
 }
 
+# Links each skill of the image into the user skills folder of each agent:
+# ~/.agents (agy and others), ~/.claude and ~/.gemini/config (agy). It removes
+# links to image skills that no longer exist, and keeps the skills that the
+# user adds. The skills cite ../../references, so each folder also gets a link
+# to the references.
+setup_skills() {
+  local src=/usr/share/paseo/agents dir entry skill name
+  for dir in ~/.agents ~/.claude ~/.gemini/config; do
+    mkdir -p "${dir}/skills"
+    for entry in "${dir}"/skills/*; do
+      [[ -L "$entry" && "$(readlink "$entry")" == "${src}/"* && ! -e "$entry" ]] &&
+        rm -f "$entry"
+    done
+    for skill in "${src}"/skills/*/; do
+      skill="${skill%/}"
+      name="${skill##*/}"
+      if [[ -e "${dir}/skills/${name}" && ! -L "${dir}/skills/${name}" ]]; then
+        log "skill ${name} in ${dir} is not from the image; kept"
+        continue
+      fi
+      ln -sfn "$skill" "${dir}/skills/${name}"
+    done
+    if [[ -e "${dir}/references" && ! -L "${dir}/references" ]]; then
+      log "${dir}/references is not from the image; kept"
+    else
+      ln -sfn "${src}/references" "${dir}/references"
+    fi
+  done
+}
+
 setup_signing
 setup_providers
+setup_skills || log "skills setup failed"
 setup_notion_mcp || log "notion mcp setup failed"
 # Agents get the token only through the notion-mcp wrapper.
 unset NOTION_TOKEN

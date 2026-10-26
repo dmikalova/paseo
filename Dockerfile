@@ -87,6 +87,10 @@ COPY etc/ /etc/
 # trusted in Claude Code, and notion-mcp starts the Notion MCP server. See the
 # README.
 COPY --chmod=0755 usr/local/bin/ /usr/local/bin/
+# The agent skills and the references that they cite. paseo-setup links them
+# into the skills folder of each agent. See the README.
+COPY .agents/skills/ /usr/share/paseo/agents/skills/
+COPY .agents/references/ /usr/share/paseo/agents/references/
 
 # Start as the paseo user, not root. The upstream entrypoint then skips its
 # chown and its drop to paseo. Under rootless podman, root in the container

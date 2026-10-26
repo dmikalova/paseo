@@ -52,6 +52,18 @@ The image owns the values of the **Agents** tab in the Paseo settings. `paseo-se
 | Browser tools (`daemon.browserTools`) | Off. These tools control the browser pane in the Paseo app, not a headless browser. Use Playwright in the container instead. | `paseo-setup` |
 | Orchestration skills (`agents.skills.selection`) | None. This repo installs all skills, so only one tool writes to `~/.claude/skills` and `~/.agents/skills`. | `paseo-setup` |
 
+### Agent skills
+
+The image has the skills from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills). `paseo-setup` links each skill into `~/.agents/skills`, `~/.claude/skills` and `~/.gemini/config/skills` at each start. It removes the links to skills that the image no longer has. A skill that the user adds to these folders stays. The skills cite `../../references/`, so each folder also gets a `references` link. The system prompt tells each agent to start with the `using-agent-skills` skill.
+
+The skills are in `.agents/skills`, and `skills-lock.json` records their hashes. The `.claude/skills` links let agents that work on this repo use them too. To update the skills, run this command and commit the changes:
+
+```sh
+npx skills update -y
+```
+
+The CLI does not copy the shared `references` folder. Copy it from the same commit of the upstream repo to `.agents/references`. Do not edit the upstream files.
+
 ### Folder trust
 
 Claude Code asks to trust each folder, and it keeps the answer per path in `~/.claude/.claude.json` (`projects["<path>"].hasTrustDialogAccepted`). Trust does not pass from a folder to its subfolders, and every Paseo worktree gets a new random path. So trust has two parts, and both use `paseo-trust <dir>...`:

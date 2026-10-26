@@ -1,4 +1,18 @@
 {
   "$schema": "https://raw.githubusercontent.com/dmikalova/project-standards/main/schema/mklv.config.schema.json",
-  "kind": "image"
+  "kind": "image",
+  "tools": {
+    "markdownlint": {
+      "ignores": [".agents/**", ".claude/**"]
+    },
+    "lefthook": {
+      "pre-commit": {
+        "commands": {
+          "no-shell-scripts": {
+            "exclude": [".agents/**", ".claude/**"]
+          }
+        }
+      }
+    }
+  }
 }
