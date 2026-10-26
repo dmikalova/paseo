@@ -28,16 +28,19 @@ RUN set -eux; \
       "@google/gemini-cli@${GEMINI_CLI_VERSION}"; \
     npm cache clean --force
 
+# One go install for each module: go refuses packages from different modules
+# in one command.
 RUN set -eux; \
     curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local; \
     curl -fsSL "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${TARGETARCH}.tar.gz" \
       | tar -xz -C /usr/local --strip-components=1 "gh_${GH_VERSION}_linux_${TARGETARCH}/bin/gh"; \
-    GOBIN=/usr/local/bin GOPATH=/tmp/go GOCACHE=/tmp/gocache \
-      /usr/local/go/bin/go install \
-        "github.com/magefile/mage@v${MAGE_VERSION}" \
-        "github.com/evilmartians/lefthook/v2@v${LEFTHOOK_VERSION}" \
-        "github.com/dmikalova/project-standards/cmd/project-standards@v${PROJECT_STANDARDS_VERSION}"; \
+    for pkg in \
+      "github.com/magefile/mage@v${MAGE_VERSION}" \
+      "github.com/evilmartians/lefthook/v2@v${LEFTHOOK_VERSION}" \
+      "github.com/dmikalova/project-standards/cmd/project-standards@v${PROJECT_STANDARDS_VERSION}"; do \
+      GOBIN=/usr/local/bin GOPATH=/tmp/go GOCACHE=/tmp/gocache /usr/local/go/bin/go install "$pkg"; \
+    done; \
     rm -rf /tmp/go /tmp/gocache
 
 ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:${PATH}
