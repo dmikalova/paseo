@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Start-up setup for den. Runs before the upstream entrypoint, then execs it.
+# See the README for the PASEO_SETUP_* variables.
+set -euo pipefail
+
+: "${HOME:=/home/paseo}"
+: "${PASEO_HOME:=${HOME}/.paseo}"
+: "${PASEO_LISTEN:=0.0.0.0:6767}"
+
+log() { echo "[paseo-setup] $*" >&2; }
+
+setup_signing() {
+  [[ -n "${PASEO_SETUP_SIGNING_KEY:-}" ]] || return 0
+
+  # /tmp is tmpfs. The key never goes to /home or /workspace.
+  local dir key
+  dir="$(mktemp -d /tmp/paseo-signing.XXXXXX)"
+  chmod 0700 "$dir"
+  key="${dir}/id"
+  (umask 077 && printf '%s' "$PASEO_SETUP_SIGNING_KEY" | base64 -d >"$key")
+  chmod 0600 "$key"
+  ssh-keygen -q -p -P "${PASEO_SETUP_SIGNING_KEY_PASSPHRASE:-}" -N "" -f "$key" >/dev/null
+
+  git config --global gpg.format ssh
+  git config --global user.signingkey "$key"
+  git config --global commit.gpgsign true
+  git config --global tag.gpgsign true
+  log "commit and tag signing enabled"
+}
+
+setup_providers() {
+  [[ -n "${PASEO_SETUP_PROVIDERS:-}" ]] || return 0
+
+  mkdir -p "$PASEO_HOME"
+  node - "$PASEO_HOME/config.json" <<'JS'
+const fs = require("fs");
+const file = process.argv[2];
+const keep = new Set(
+  (process.env.PASEO_SETUP_PROVIDERS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+);
+const builtin = ["claude", "codex", "copilot", "opencode", "pi", "omp", "antigravity", "muse"];
+
+let config = {};
+try {
+  config = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
+}
+
+config.agents ??= {};
+config.agents.providers ??= {};
+const providers = config.agents.providers;
+
+for (const id of builtin) {
+  if (keep.has(id)) continue;
+  providers[id] = { ...providers[id], enabled: false };
+}
+if (keep.has("gemini")) {
+  providers.gemini = {
+    ...providers.gemini,
+    extends: "acp",
+    label: "Gemini",
+    command: ["gemini", "--acp"],
+  };
+}
+
+fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
+JS
+  log "providers set to: ${PASEO_SETUP_PROVIDERS}"
+}
+
+clone_repos() {
+  local port="${PASEO_LISTEN##*:}" owner repo name
+  until curl -fsS "http://127.0.0.1:${port}/api/health" >/dev/null 2>&1; do
+    sleep 2
+  done
+
+  local owners
+  IFS=',' read -ra owners <<<"$PASEO_SETUP_OWNERS"
+  for owner in "${owners[@]}"; do
+    owner="${owner// /}"
+    [[ -n "$owner" ]] || continue
+    while read -r repo; do
+      [[ -n "$repo" ]] || continue
+      name="${repo#*/}"
+      [[ -d "/workspace/${name}" ]] && continue
+      paseo clone "$repo" --protocol https --dir /workspace ||
+        log "clone of ${repo} failed"
+    done < <(gh repo list "$owner" --limit 1000 --no-archived --source \
+      --json nameWithOwner --jq '.[].nameWithOwner' ||
+      { log "listing ${owner} failed" >&2; })
+  done
+  log "repo sync finished"
+}
+
+setup_signing
+setup_providers
+
+if [[ -n "${PASEO_SETUP_OWNERS:-}" ]]; then
+  clone_repos &
+fi
+
+exec /usr/local/bin/paseo-docker-entrypoint "$@"
