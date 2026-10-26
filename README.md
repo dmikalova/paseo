@@ -39,6 +39,18 @@ ssh -t den podman exec -it paseo /home/paseo/.local/bin/agy
 
 Use `paseo-work` for the work instance. `agy` keeps the login in `~/.gemini/oauth_creds.json`, in the home that is backed up, so it lasts across restarts and image updates. Press Ctrl+C twice after the login.
 
+### Agents settings
+
+The image owns the values of the **Agents** tab in the Paseo settings. `paseo-setup` writes them to `~/.paseo/config.json` at each start, so a change in the UI lasts only until the next start. Change them in this repo:
+
+| Setting | Value | Source |
+| --- | --- | --- |
+| Agent profiles (`daemon.agentProfiles`) | One profile for each model and thinking level. The workflow plugin maps each stage to a profile. The script drops a profile if its provider is not enabled. | [`etc/paseo/agent-profiles.json`](etc/paseo/agent-profiles.json) |
+| System prompt (`daemon.appendSystemPrompt`) | The rules that every agent gets. | [`etc/paseo/system-prompt.md`](etc/paseo/system-prompt.md) |
+| Paseo tools (`daemon.mcp`) | On. `ENABLE_TOOL_SEARCH=true` makes Claude Code load a tool schema only when it needs the tool. | `paseo-setup` |
+| Browser tools (`daemon.browserTools`) | Off. These tools control the browser pane in the Paseo app, not a headless browser. Use Playwright in the container instead. | `paseo-setup` |
+| Orchestration skills (`agents.skills.selection`) | None. This repo installs all skills, so only one tool writes to `~/.claude/skills` and `~/.agents/skills`. | `paseo-setup` |
+
 ### Folder trust
 
 Claude Code asks to trust each folder, and it keeps the answer per path in `~/.claude/.claude.json` (`projects["<path>"].hasTrustDialogAccepted`). Trust does not pass from a folder to its subfolders, and every Paseo worktree gets a new random path. So trust has two parts, and both use `paseo-trust <dir>...`:

@@ -62,6 +62,10 @@ ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:/home/paseo/.local/bin:${PATH}
 # is in the home, and it updates itself.
 ENV DISABLE_AUTOUPDATER=1
 
+# Claude Code loads the schema of an MCP tool only when it needs the tool.
+# This forces tool search on, also for the local model server.
+ENV ENABLE_TOOL_SEARCH=true
+
 # Podman needs a runtime directory. paseo-setup makes it on the /tmp tmpfs.
 ENV XDG_RUNTIME_DIR=/tmp/run-paseo
 
@@ -72,6 +76,7 @@ ENV GOMODCACHE=/home/paseo/.cache/go-mod \
     npm_config_store_dir=/home/paseo/.cache/pnpm-store
 
 # Managed settings: agents and project files cannot override these keys.
+# paseo: the agent profiles and the system prompt, see the README.
 # gitconfig: git uses the gh token for github.com.
 # containers, subuid and subgid: the nested podman setup.
 COPY etc/ /etc/

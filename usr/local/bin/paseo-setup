@@ -125,6 +125,18 @@ if (keep.size > 0) config.daemon.terminalProfiles = [...keep]
   .filter((id) => profiles[id])
   .map((id) => ({ id, ...profiles[id], icon: id }));
 
+// The Agents settings. The image owns these values, so a change in the UI
+// lasts only until the next start.
+const enabled = (id) => (id === "local" ? Boolean(providers.local) : providers[id]?.enabled !== false);
+config.daemon.agentProfiles = JSON.parse(fs.readFileSync("/etc/paseo/agent-profiles.json", "utf8"))
+  .filter((p) => enabled(p.provider));
+config.daemon.appendSystemPrompt = fs.readFileSync("/etc/paseo/system-prompt.md", "utf8").trim();
+config.daemon.mcp = { ...config.daemon.mcp, enabled: true, injectIntoAgents: true };
+config.daemon.browserTools = { ...config.daemon.browserTools, enabled: false };
+// The paseo repo installs all skills. Paseo's own installer stays off, so
+// only one tool writes to ~/.claude/skills and ~/.agents/skills.
+config.agents.skills = { ...config.agents.skills, selection: { mode: "custom", skills: [] } };
+
 fs.writeFileSync(file, JSON.stringify(config, null, 2) + "\n");
 JS
   log "providers set to: ${PASEO_SETUP_PROVIDERS}"

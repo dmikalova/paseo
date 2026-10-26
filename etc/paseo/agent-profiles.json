@@ -1,0 +1,44 @@
+[
+  {
+    "id": "fable-high",
+    "name": "Fable high",
+    "icon": "claude",
+    "provider": "claude",
+    "model": "claude-fable-5-1",
+    "thinkingOptionId": "high",
+    "notes": "Plan stage only. Use it only when the user asks for deep thinking."
+  },
+  {
+    "id": "opus-high",
+    "name": "Opus high",
+    "icon": "claude",
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "thinkingOptionId": "high",
+    "notes": "Spec and plan stages."
+  },
+  {
+    "id": "opus-medium",
+    "name": "Opus medium",
+    "icon": "claude",
+    "provider": "claude",
+    "model": "claude-opus-5-5",
+    "thinkingOptionId": "medium",
+    "notes": "Build, review and debug stages. 200k context."
+  },
+  {
+    "id": "qwen-local",
+    "name": "Qwen local",
+    "provider": "local",
+    "model": "qwen3:14b",
+    "notes": "Intake, ship, and easy or repetitive build tasks. No cost. Slow on long prompts."
+  },
+  {
+    "id": "gemini-flash",
+    "name": "Gemini Flash",
+    "icon": "antigravity",
+    "provider": "antigravity",
+    "model": "gemini-3.8-flash-medium",
+    "notes": "Breadth research, and a check of a local research summary. The credits are limited."
+  }
+]
