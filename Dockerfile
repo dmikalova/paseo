@@ -43,11 +43,28 @@ RUN set -eux; \
     done; \
     rm -rf /tmp/go /tmp/gocache
 
+# Rootless podman, so that agents can build and run containers. podman-docker
+# gives the docker command. newuidmap and newgidmap get file capabilities in
+# place of the setuid bit: in the den container, the setuid helper cannot
+# write the ID map of the inner user namespace.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      podman podman-docker crun uidmap fuse-overlayfs catatonit libcap2-bin; \
+    rm -rf /var/lib/apt/lists/*; \
+    touch /etc/containers/nodocker; \
+    chmod u-s /usr/bin/newuidmap /usr/bin/newgidmap; \
+    setcap cap_setuid=ep /usr/bin/newuidmap; \
+    setcap cap_setgid=ep /usr/bin/newgidmap
+
 ENV PATH=/usr/local/go/bin:/home/paseo/go/bin:${PATH}
 
 # The root filesystem is read-only on den. Renovate updates the CLIs, so the
 # CLIs must not try to update themselves.
 ENV DISABLE_AUTOUPDATER=1
+
+# Podman needs a runtime directory. paseo-setup makes it on the /tmp tmpfs.
+ENV XDG_RUNTIME_DIR=/tmp/run-paseo
 
 # Download caches go under ~/.cache. den mounts a cache area there, so the
 # caches stay out of the backup of the home directory.
@@ -57,6 +74,7 @@ ENV GOMODCACHE=/home/paseo/.cache/go-mod \
 
 # Managed settings: agents and project files cannot override these keys.
 # gitconfig: git uses the gh token for github.com.
+# containers, subuid and subgid: the nested podman setup.
 COPY etc/ /etc/
 # paseo-setup is the start-up setup script and paseo-trust marks folders as
 # trusted in Claude Code, see the README.
@@ -67,5 +85,9 @@ COPY --chmod=0755 usr/local/bin/ /usr/local/bin/
 # has no capabilities, so that chown fails on a bind mount.
 USER paseo
 
-# The setup script runs first and then execs the upstream entrypoint.
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/paseo-setup"]
+# The setup script runs first and then execs the upstream entrypoint. den
+# gives the container the capabilities that nested podman needs in its
+# bounding set. Podman also makes them ambient for the paseo user, so setpriv
+# clears them: Paseo and the agents run with no effective capabilities.
+ENTRYPOINT ["/usr/bin/tini", "--", "setpriv", "--inh-caps=-all", "--ambient-caps=-all", \
+  "/usr/local/bin/paseo-setup"]

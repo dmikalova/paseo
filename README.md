@@ -9,6 +9,8 @@ The image starts from `ghcr.io/getpaseo/paseo` and adds these tools:
 - Claude Code and Gemini CLI, the agent CLIs.
 - `gh`, Go, `mage`, `lefthook` and `project-standards`, for the standard project check.
 
+- Rootless podman with the `docker` command, so that agents can build and run containers. See [Containers](#containers).
+
 The image also has `/etc/claude-code/managed-settings.json`. This file turns off the Claude attribution in commits and pull requests. It also stops agents from running Python in the shell, because the image has no Python. An agent or a project cannot override a managed setting.
 
 All versions are pinned in the `Dockerfile`. Renovate reads the `# renovate:` comments and updates the versions.
@@ -30,6 +32,25 @@ Claude Code asks to trust each folder, and it keeps the answer per path in `~/.c
 
 - `paseo-setup` trusts each repo in `/workspace` when it clones the repo or finds it.
 - A worktree setup hook in `paseo.json` trusts each new worktree: `{"worktree": {"setup": "paseo-trust \"$PASEO_WORKTREE_PATH\""}}`. Paseo reads `paseo.json` from each project, so a repo needs this hook in its own `paseo.json`. This repo has it.
+
+## Containers
+
+Agents run `docker` or `podman` in the container. This is rootless podman in a rootless podman container. The image has these parts:
+
+- `newuidmap` and `newgidmap` have file capabilities in place of the setuid bit. In the den container, the setuid helpers cannot write the ID map of the inner user namespace.
+- `/etc/subuid` and `/etc/subgid` give `paseo` every other ID of the outer namespace.
+- `/etc/containers/containers.conf` has the settings of `quay.io/podman/stable`. The inner containers share the network, IPC and UTS namespaces of the outer container.
+- Storage is overlay through `fuse-overlayfs`. Short image names resolve on Docker Hub.
+- The entrypoint clears the ambient capabilities with `setpriv`, so Paseo and the agents have no effective capabilities.
+
+den must run the container with these settings. den has them in `paseo.container.d/`:
+
+- `/dev/fuse`.
+- The capabilities `CHOWN DAC_OVERRIDE FOWNER FSETID KILL SETFCAP SETGID SETPCAP SETUID SYS_CHROOT` in the bounding set. Root in the inner user namespace cannot use a capability that is not in this set.
+- `NoNewPrivileges=false`. With it on, `newuidmap` does not get its file capabilities.
+- `--security-opt unmask=/proc/*`. Debian 12 has podman 4.3, which cannot mount `/proc` for an inner container while paths in the outer `/proc` are masked.
+- `--security-opt label=disable`.
+- A volume on `/home/paseo/.local/share/containers`, so the image storage stays out of the home backup.
 
 ## Release
 

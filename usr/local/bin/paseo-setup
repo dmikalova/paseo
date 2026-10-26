@@ -9,6 +9,11 @@ set -euo pipefail
 
 log() { echo "[paseo-setup] $*" >&2; }
 
+# Podman needs its runtime directory. /tmp is a tmpfs, so make it each start.
+if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+  mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+fi
+
 # A bad key or passphrase must not stop the container, or it restarts in a
 # loop. Signing stays off and the ruleset rejects the unsigned commits.
 setup_signing() {
