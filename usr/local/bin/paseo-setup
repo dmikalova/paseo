@@ -155,25 +155,82 @@ install_antigravity() {
     || log "antigravity cli install failed"
 }
 
-# The Notion MCP server for Claude Code and agy. The token goes to tmpfs and
-# the notion-mcp wrapper reads it. An empty NOTION_TOKEN removes the server.
-setup_notion_mcp() {
-  local dir=/tmp/paseo-secrets
-  claude mcp remove -s user notion >/dev/null 2>&1 || true
-  if [[ -z "${NOTION_TOKEN:-}" ]]; then
-    rm -f "${dir}/notion-token"
-    [[ -x "${HOME}/.local/bin/agy" ]] && { agy mcp remove notion >/dev/null 2>&1 || true; }
+# The MCP servers that the image adds to Claude Code and agy. Each entry is
+# "name command variable". The setup writes the variable to
+# /tmp/paseo-secrets/<name>-token, and the command is a wrapper that reads that
+# file, so no config file holds the secret. The image owns a server only while
+# its command is the wrapper. The setup never changes or removes a server that
+# the user added with the same name, such as a hosted OAuth server.
+MCP_SERVERS=(
+  "notion notion-mcp NOTION_TOKEN"
+)
+
+# Prints who owns the server <name> in the CLI config <file>: "none", "image"
+# (its command is <command>) or "user". A config that cannot be read fails, and
+# the caller then treats the server as the user's.
+mcp_owner() {
+  node - "$1" "$2" "$3" <<'JS'
+const fs = require("fs");
+const [file, name, command] = process.argv.slice(2);
+let config = {};
+try {
+  config = JSON.parse(fs.readFileSync(file, "utf8"));
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
+}
+const server = config.mcpServers?.[name];
+console.log(!server ? "none" : server.command === command ? "image" : "user");
+JS
+}
+
+# Adds (want=yes) or removes (want=no) one image server in one CLI.
+sync_mcp() {
+  local cli="$1" file="$2" name="$3" command="$4" want="$5" owner
+  owner="$(mcp_owner "$file" "$name" "$command")" || owner=user
+  if [[ "$owner" == user ]]; then
+    log "${cli} mcp server ${name} is not from the image; kept"
     return 0
   fi
+  if [[ "$want" == yes ]]; then
+    case "$cli" in
+      claude)
+        claude mcp remove -s user "$name" >/dev/null 2>&1 || true
+        claude mcp add-json -s user "$name" "{\"type\":\"stdio\",\"command\":\"${command}\"}" >/dev/null
+        ;;
+      agy) agy mcp add "$name" "$command" >/dev/null ;;
+    esac
+  elif [[ "$owner" == image ]]; then
+    case "$cli" in
+      claude) claude mcp remove -s user "$name" >/dev/null ;;
+      agy) agy mcp remove "$name" >/dev/null ;;
+    esac
+  fi
+}
+
+# An empty variable removes the image server.
+setup_mcp() {
+  local dir=/tmp/paseo-secrets entry name command var want
+  local claude_config="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
+  local agy_config="${HOME}/.gemini/config/mcp_config.json"
   mkdir -p "$dir"
   chmod 0700 "$dir"
-  (umask 077 && printf '%s' "$NOTION_TOKEN" >"${dir}/notion-token")
-  claude mcp add-json -s user notion '{"type":"stdio","command":"notion-mcp"}' >/dev/null ||
-    log "notion mcp setup for claude failed"
-  if [[ -x "${HOME}/.local/bin/agy" ]]; then
-    agy mcp add notion notion-mcp >/dev/null || log "notion mcp setup for agy failed"
-  fi
-  log "notion mcp configured"
+  for entry in "${MCP_SERVERS[@]}"; do
+    read -r name command var <<<"$entry"
+    if [[ -n "${!var:-}" ]]; then
+      want=yes
+      (umask 077 && printf '%s' "${!var}" >"${dir}/${name}-token")
+    else
+      want=no
+      rm -f "${dir}/${name}-token"
+    fi
+    sync_mcp claude "$claude_config" "$name" "$command" "$want" ||
+      log "${name} mcp setup for claude failed"
+    if [[ -x "${HOME}/.local/bin/agy" ]]; then
+      sync_mcp agy "$agy_config" "$name" "$command" "$want" ||
+        log "${name} mcp setup for agy failed"
+    fi
+  done
+  log "mcp servers configured"
 }
 
 # Bring a clean clone up to date. A clone with changes, or on a branch with no
@@ -259,9 +316,12 @@ setup_skills() {
 setup_signing
 setup_providers
 setup_skills || log "skills setup failed"
-setup_notion_mcp || log "notion mcp setup failed"
-# Agents get the token only through the notion-mcp wrapper.
-unset NOTION_TOKEN
+setup_mcp || log "mcp setup failed"
+# Agents get the secrets only through the MCP wrappers.
+for entry in "${MCP_SERVERS[@]}"; do
+  read -r _ _ var <<<"$entry"
+  unset "$var"
+done
 
 # The subshell lets the background job outlive it, so tini adopts and reaps
 # the job and the daemon does not collect a zombie.

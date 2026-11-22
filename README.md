@@ -28,7 +28,20 @@ All versions are pinned in the `Dockerfile`. Renovate reads the `# renovate:` co
 | `PASEO_SETUP_LOCAL_CONTEXT` | The context window of the local models, in tokens. The default is `32768`. Claude Code compacts the conversation at this size. Set the same size on the model server. |
 | `PASEO_SETUP_SIGNING_KEY` | Base64 of an OpenSSH private key that has a passphrase. The script decodes it into `/tmp` with mode `0600`, removes the passphrase from that copy, and sets `gpg.format=ssh`, `user.signingkey`, `commit.gpgsign` and `tag.gpgsign` in the global git config. The key is never written to `/home` or `/workspace`. It also writes an allowed signers file next to the key, with the committer email, so `git log --show-signature` works. If the key or the passphrase is wrong, the script logs the error and leaves signing off, so the container still starts. |
 | `PASEO_SETUP_SIGNING_KEY_PASSPHRASE` | The passphrase of that key. |
-| `NOTION_TOKEN` | A Notion internal integration token. The script writes it to `/tmp/paseo-secrets/notion-token` with mode `0600`, adds the `notion` MCP server to Claude Code (user scope) and to `agy`, and then removes the variable from the environment. The server command is `notion-mcp`, a wrapper that reads the token file and starts `notion-mcp-server`, so no config file holds the token. If the variable is empty, the script removes the server. Share each Notion page that agents need with the integration. |
+| `NOTION_TOKEN` | A Notion internal integration token. The script writes it to `/tmp/paseo-secrets/notion-token` with mode `0600`, adds the `notion` MCP server to Claude Code (user scope) and to `agy`, and then removes the variable from the environment. The server command is `notion-mcp`, a wrapper that reads the token file and starts `notion-mcp-server`, so no config file holds the token. If the variable is empty, the script removes the server. Share each Notion page that agents need with the integration. The script changes or removes the server only if its command is `notion-mcp`. A `notion` server that you add yourself is kept (see [MCP servers that you add](#mcp-servers-that-you-add)). |
+
+### MCP servers that you add
+
+The script manages only the MCP servers in the `MCP_SERVERS` list of `paseo-setup`. It owns a server only while the server command is the image wrapper. It never changes or removes a server that you add with `claude mcp add` or `agy mcp add`, also if the name is the same. Claude Code keeps the server config and the OAuth credentials in the home volume, so they stay after a restart.
+
+Use this for a hosted server with OAuth, for example Notion in a workspace that blocks integration tokens. Leave `NOTION_TOKEN` empty for that instance, and then run:
+
+```sh
+ssh -t den podman exec -it paseo-work claude mcp add --transport http --scope user --callback-port 53682 notion https://mcp.notion.com/mcp
+ssh -t den podman exec -it paseo-work claude
+```
+
+In Claude Code, run `/mcp`, select `notion`, and open the sign-in URL in a browser. The browser then fails to load `localhost:53682`. Copy that URL from the address bar and paste it into the Claude Code prompt.
 
 ### Antigravity login
 
